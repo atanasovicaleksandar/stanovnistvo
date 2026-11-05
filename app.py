@@ -186,8 +186,8 @@ with tab_table:
     st.dataframe(wide)
     c1, c2 = st.columns(2)
     c1.download_button("Download CSV", wide.to_csv(index=False).encode("utf-8-sig"),
-                       populacija.csv", "text/csv")
-    c2.download_button("Download Excel", to_excel_bytes(wide), populacija.xlsx",
+                       "populacija.csv", "text/csv")
+    c2.download_button("Download Excel", to_excel_bytes(wide), "populacija.xlsx",
                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 with tab_chart:
