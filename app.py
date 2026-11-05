@@ -44,6 +44,7 @@ RENAME = {
 
 @st.cache_data(show_spinner="Cleaning data...")
 def load_and_clean(file_bytes, header_row, footer_rows, extra_cols):
+
     df = pd.read_excel(io.BytesIO(file_bytes), header=header_row)
 
     df.columns = (
@@ -147,6 +148,20 @@ if not uploaded:
     st.info("Upload the file to get started.")
     st.stop()
 
+# Read table name from the first row, first column of the original Excel file
+raw_header = pd.read_excel(
+    io.BytesIO(uploaded.getvalue()),
+    header=None,
+    nrows=1
+    )
+
+table_name_title = str(raw_header.iloc[0, 0]).strip()
+
+# Make the name safe for file downloads
+table_name_title = "".join(
+    c for c in table_name_title if c not in r'\/:*?"<>|'
+    )
+
 try:
     data, value_cols = load_and_clean(
         uploaded.getvalue(), int(header_row), int(footer_rows), int(extra_cols)
@@ -184,11 +199,22 @@ tab_table, tab_chart = st.tabs(["Table", "Chart"])
 with tab_table:
     st.caption(f"{len(wide)} rows")
     st.dataframe(wide)
+
     c1, c2 = st.columns(2)
-    c1.download_button("Download CSV", wide.to_csv(index=False).encode("utf-8-sig"),
-                       "populacija.csv", "text/csv")
-    c2.download_button("Download Excel", to_excel_bytes(wide), "populacija.xlsx",
-                       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+    c1.download_button(
+        "Download CSV",
+        wide.to_csv(index=False).encode("utf-8-sig"),
+        f"{table_name_title}.csv",
+        "text/csv"
+    )
+
+    c2.download_button(
+        "Download Excel",
+        to_excel_bytes(wide),
+        f"{table_name_title}.xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 
 with tab_chart:
     st.caption(
