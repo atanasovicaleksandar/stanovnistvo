@@ -5,7 +5,7 @@ import pandas as pd
 import seaborn as sns
 import streamlit as st
 
-st.set_page_config(page_title="Sredi mi podatke!", layout="wide")
+st.set_page_config(page_title="Population explorer", layout="wide")
 
 ID_COLS = ["Регион", "Пол"]
 
@@ -131,7 +131,7 @@ def build_figure(kind, long, groups, top_n, as_share, log_scale, title):
 
 
 # ------------------------------------------------------------------ UI
-st.title("Population explorer")
+st.title("Sredi mi podatke!")
 
 uploaded = st.file_uploader("Upload the Excel file", type=["xlsx"])
 
