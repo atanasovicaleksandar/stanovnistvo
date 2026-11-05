@@ -131,7 +131,7 @@ def build_figure(kind, long, groups, top_n, as_share, log_scale, title):
 
 
 # ------------------------------------------------------------------ UI
-st.title("Population explorer")
+st.title("Sredi mi podatke!")
 
 uploaded = st.file_uploader("Upload the Excel file", type=["xlsx"])
 
