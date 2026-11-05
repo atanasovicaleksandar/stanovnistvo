@@ -94,6 +94,8 @@ def build_figure(kind, long, groups, top_n, as_share, log_scale, title):
     sns.set_theme(style="whitegrid")
     n = max(len(groups), 1)
 
+# Add a hue by gender
+
     if kind == "Grouped bar (by group)":
         fig, ax = plt.subplots(figsize=(max(8, 0.9 * n), 5))
         sns.barplot(data=long, x="Група", y="Број", hue="Пол",
@@ -177,13 +179,18 @@ wide = view[ID_COLS + groups]
 
 tab_table, tab_chart = st.tabs(["Table", "Chart"])
 
+# Change population with first row in the original table (that's the name of the table!)
+
+table_name = pd.read_excel(io.BytesIO(file_bytes), usecols=[0], header=None, nrows=1)
+table_name_title = table_name.to_string(index=False, header=False)
+
 with tab_table:
     st.caption(f"{len(wide)} rows")
     st.dataframe(wide)
     c1, c2 = st.columns(2)
     c1.download_button("Download CSV", wide.to_csv(index=False).encode("utf-8-sig"),
-                       "population.csv", "text/csv")
-    c2.download_button("Download Excel", to_excel_bytes(wide), "population.xlsx",
+                       f"{table_name_title}.csv", "text/csv")
+    c2.download_button("Download Excel", to_excel_bytes(wide), f"{table_name_title}.xlsx",
                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 with tab_chart:
