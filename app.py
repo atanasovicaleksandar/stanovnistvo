@@ -5,7 +5,7 @@ import pandas as pd
 import seaborn as sns
 import streamlit as st
 
-st.set_page_config(page_title="Population explorer", layout="wide")
+st.set_page_config(page_title="Sredi mi podatke!", layout="wide")
 
 ID_COLS = ["Регион", "Пол"]
 
