@@ -181,7 +181,7 @@ tab_table, tab_chart = st.tabs(["Table", "Chart"])
 
 # Change population with first row in the original table (that's the name of the table!)
 
-table_name = pd.read_excel(io.BytesIO(file_bytes), usecols=[0], header=None, nrows=1)
+table_name = pd.read_excel(io.BytesIO(), usecols=[0], header=None, nrows=1)
 table_name_title = table_name.to_string(index=False, header=False)
 
 with tab_table:
