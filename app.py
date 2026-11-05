@@ -181,16 +181,13 @@ tab_table, tab_chart = st.tabs(["Table", "Chart"])
 
 # Change population with first row in the original table (that's the name of the table!)
 
-table_name = pd.read_excel(io.BytesIO(), usecols=[0], header=None, nrows=1)
-table_name_title = table_name.to_string(index=False, header=False)
-
 with tab_table:
     st.caption(f"{len(wide)} rows")
     st.dataframe(wide)
     c1, c2 = st.columns(2)
     c1.download_button("Download CSV", wide.to_csv(index=False).encode("utf-8-sig"),
-                       rf"{table_name_title}.csv", "text/csv")
-    c2.download_button("Download Excel", to_excel_bytes(wide), rf"{table_name_title}.xlsx",
+                       populacija.csv", "text/csv")
+    c2.download_button("Download Excel", to_excel_bytes(wide), populacija.xlsx",
                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 with tab_chart:
