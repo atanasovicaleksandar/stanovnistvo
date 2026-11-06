@@ -41,10 +41,15 @@ RENAME = {
     'Непознато  Unknown': 'Непознато',
 }
 
+# Possibly to filter out regions not in use...
+#regions = []
 
 @st.cache_data(show_spinner="Cleaning data...")
 def load_and_clean(file_bytes, header_row, footer_rows, extra_cols):
-    df = pd.read_excel(io.BytesIO(file_bytes), header=header_row)
+    df = pd.read_excel(io.BytesIO(file_bytes), header=header_row, engine="xlrd")
+
+
+@ Maybe the best move would be to replace this with just index?
 
     df.columns = (
         df.columns.astype(str)
@@ -68,6 +73,10 @@ def load_and_clean(file_bytes, header_row, footer_rows, extra_cols):
     # Fill merged-cell gaps only in the label columns.
     # (Forward-filling the numbers would copy values into cells that were '-'.)
     df[ID_COLS] = df[ID_COLS].ffill()
+
+    # To include if we want to filter out specific regions (possibly make it a standalone filter?)
+
+    #df = df[~df['Регион'].isin(regions)]
 
     value_cols = [c for c in df.columns if c not in ID_COLS]
     df[value_cols] = df[value_cols].apply(pd.to_numeric, errors="coerce")
@@ -135,7 +144,7 @@ def build_figure(kind, long, groups, top_n, as_share, log_scale, title):
 # ------------------------------------------------------------------ UI
 st.title("Sredi mi podatke!")
 
-uploaded = st.file_uploader("Upload the Excel file", type=["xlsx"])
+uploaded = st.file_uploader("Upload the Excel file", type=["xlsx","xls","csv"])
 
 with st.sidebar:
     with st.expander("File layout (advanced)"):
