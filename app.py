@@ -41,10 +41,15 @@ RENAME = {
     'Непознато  Unknown': 'Непознато',
 }
 
+# Possibly to filter out regions not in use...
+#regions = []
 
 @st.cache_data(show_spinner="Cleaning data...")
 def load_and_clean(file_bytes, header_row, footer_rows, extra_cols):
     df = pd.read_excel(io.BytesIO(file_bytes), header=header_row)
+
+
+# Maybe the best move would be to replace this with just index?
 
     df.columns = (
         df.columns.astype(str)
@@ -69,6 +74,10 @@ def load_and_clean(file_bytes, header_row, footer_rows, extra_cols):
     # (Forward-filling the numbers would copy values into cells that were '-'.)
     df[ID_COLS] = df[ID_COLS].ffill()
 
+    # To include if we want to filter out specific regions (possibly make it a standalone filter?)
+
+    #df = df[~df['Регион'].isin(regions)]
+
     value_cols = [c for c in df.columns if c not in ID_COLS]
     df[value_cols] = df[value_cols].apply(pd.to_numeric, errors="coerce")
     return df.reset_index(drop=True), value_cols
@@ -82,7 +91,7 @@ def to_excel_bytes(df):
 
 
 def region_pivot(long, groups, top_n, as_share):
-    pv = long.pivot_table(index="Регион", columns="Група", values="Број", aggfunc="sum")
+    pv = long.pivot_table(index="Регион", columns="Група", values="Број становника", aggfunc="sum")
     pv = pv[[g for g in groups if g in pv.columns]]
     pv = pv.loc[pv.sum(axis=1).nlargest(top_n).index]
     if as_share:
@@ -98,14 +107,16 @@ def build_figure(kind, long, groups, top_n, as_share, log_scale, title):
 
     if kind == "Grouped bar (by group)":
         fig, ax = plt.subplots(figsize=(max(8, 0.9 * n), 5))
-        sns.barplot(data=long, x="Група", y="Број", hue="Пол",
+        sns.barplot(data=long, x="Група", y="Број становника", hue="Пол",
                     order=groups, estimator="sum", errorbar=None, ax=ax)
         if log_scale:
             ax.set_yscale("log")
 
+        ax.ticklabel_format(useOffset=False, style="plain", axis="y")
+
     elif kind == "Boxplot (spread across regions)":
         fig, ax = plt.subplots(figsize=(max(8, 0.9 * n), 5))
-        sns.boxplot(data=long, x="Група", y="Број", hue="Пол", order=groups, ax=ax)
+        sns.boxplot(data=long, x="Група", y="Број становника", hue="Пол", order=groups, ax=ax)
         if log_scale:
             ax.set_yscale("log")
 
@@ -115,7 +126,7 @@ def build_figure(kind, long, groups, top_n, as_share, log_scale, title):
         pv.plot(kind="bar", stacked=True, ax=ax,
                 color=sns.color_palette("tab20", n_colors=len(pv.columns)))
         ax.legend(bbox_to_anchor=(1.02, 1), loc="upper left")
-        ax.set_ylabel("%" if as_share else "Број")
+        ax.set_ylabel("%" if as_share else "Број становника")
 
     else:  # Heatmap
         pv = region_pivot(long, groups, top_n, as_share)
@@ -195,7 +206,8 @@ with tab_chart:
         "Tip: the Region column mixes levels (region, district, municipality). "
         "Select regions of the same level, or totals will be double counted."
     )
-    long = wide.melt(id_vars=ID_COLS, var_name="Група", value_name="Број").dropna(subset=["Број"])
+
+    long = wide.melt(id_vars=ID_COLS, var_name="Група", value_name="Број становника").dropna(subset=["Број становника"])
 
     c1, c2, c3 = st.columns(3)
     kind = c1.selectbox("Chart type", [
