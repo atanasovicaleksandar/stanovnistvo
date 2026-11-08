@@ -3,3 +3,6 @@ pandas
 seaborn>=0.13
 matplotlib
 openpyxl
+xlrd
+pyxlsb
+odfpy

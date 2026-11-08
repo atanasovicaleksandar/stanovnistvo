@@ -17,7 +17,7 @@ Boje kao takve u grafikonima su koristile tab20 a ima 21 etnicitet. Dodavali smo
 
 ##### Sta treba da se sredi
 Trenutno aplikacija radi samo na podacima iz 2022, da bi radila na podacima iz 2011 treba promeniti driver za citanje eksel podataka i prilagoditi dodatne elemente.
-Posto samo cita xlsx, kako bi citao i xls i csv (ne koristi se trenutno ali ne bi bilo lose)
+Podrzani su Excel formati `.xls`, `.xlsx`, `.xlsm`, `.xlsb` i `.ods`, kao i `.csv`.
 
 Nazivi kolona (headeri) su hardcodovani zapravo, sto pravi problem ako se u drugoj nekoj tabeli promeni redosled ili bilo sta.
 Headeri sami po sebi moraju bolje da se osmisle jer po ovoj postavci rade samo na ovom fajlu.
