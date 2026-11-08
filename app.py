@@ -1,4 +1,6 @@
 import io
+import re
+import unicodedata
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -30,54 +32,79 @@ LEVELS = ["Serbia", "Macroregion", "Oblast", "Region", "Municipality"]
 HIERARCHY_COLS = ["Serbia", "Macroregion", "Oblast", "Region", "Municipality"]
 EXCLUDED_GROUPS = {"Остали", "Регионална припадност", "Нису се изјаснили", "Непознато"}
 
-# Raw (cleaned) header -> short Serbian header
+# Structural header -> short Serbian header
 RENAME = {
     'Регион Област Град – општина': 'Регион',
-    'Пол': 'Пол',
-    'Укупно  Total': 'Укупно',
-    'Срби  Serbs': 'Срби',
-    'Aлбанци  Albanians': 'Aлбанци',
-    'Бошњаци   Bosniaks': 'Бошњаци',
-    'Бугари  Bulgarians': 'Бугари',
-    'Буњевци   Bunjevci': 'Буњевци',
-    'Власи  Vlachs': 'Власи',
-    'Горанци  Goranci': 'Горанци',
-    'Југословени   Yugoslavs': 'Југословени',
-    'Мађари  Hungarians': 'Мађари',
-    'Македонци  Macedonians': 'Македонци',
-    'Муслимани  Muslims': 'Муслимани',
-    'Немци   Germans': 'Немци',
-    'Роми   Roma people': 'Роми',
-    'Румуни   Romanians': 'Румуни',
-    'Руси  Russians': 'Руси',
-    'Русини  Ruthenians': 'Русини',
-    'Словаци  Slovaks': 'Словаци',
-    'Словенци  Slovenians': 'Словенци',
-    'Украјинци  Ukrainians': 'Украјинци',
-    'Хрвати  Croats': 'Хрвати',
-    'Црногорци  Montenegrins': 'Црногорци',
-    'Остали   Other': 'Остали',
-    'Регионалнa припадност   Regional affiliation': 'Регионална припадност',
-    'Нису се изјаснили   Did not declare': 'Нису се изјаснили',
-    'Непознато  Unknown': 'Непознато',
 }
+
+LATIN_LOOKALIKES = str.maketrans({
+    "A": "А", "a": "а", "O": "О", "o": "о",
+})
+
+
+def normalize_header(value):
+    value = str(value).replace("\u00a0", " ")
+    value = re.sub(r"[–—−]", "-", value)
+    return " ".join(value.split()).casefold()
+
+
+def clean_column_name(value):
+    value = str(value).replace("\u00a0", " ")
+    value = re.sub(r"[–—−]", "-", value)
+    parts = []
+    for part in " ".join(value.split()).split(" "):
+        has_cyrillic = any(
+            "CYRILLIC" in unicodedata.name(character, "") for character in part
+        )
+        if has_cyrillic:
+            part = part.translate(LATIN_LOOKALIKES)
+            part = "".join(
+                character for character in part
+                if "LATIN" not in unicodedata.name(character, "")
+            )
+            parts.append(part)
+        elif not any(
+            "LATIN" in unicodedata.name(character, "") for character in part
+        ):
+            parts.append(part)
+    return " ".join(part for part in parts if part)
 
 # Possibly to filter out regions not in use...
 #regions = []
 
 @st.cache_data(show_spinner="Cleaning data...")
-def load_and_clean(file_bytes, header_row, footer_rows, extra_cols):
-    df = pd.read_excel(io.BytesIO(file_bytes), header=header_row)
+def load_and_clean(file_bytes, file_name, header_row, footer_rows, extra_cols):
+    extension = file_name.rsplit(".", 1)[-1].lower()
+    excel_engines = {
+        "xls": "xlrd",
+        "xlsx": "openpyxl",
+        "xlsm": "openpyxl",
+        "xlsb": "pyxlsb",
+        "ods": "odf",
+    }
+    file_buffer = io.BytesIO(file_bytes)
+    if extension == "csv":
+        df = pd.read_csv(
+            file_buffer, sep=None, engine="python", encoding="utf-8-sig", header=header_row
+        )
+    elif extension in excel_engines:
+        df = pd.read_excel(
+            file_buffer, engine=excel_engines[extension], header=header_row
+        )
+    else:
+        raise ValueError(f"Unsupported file type: .{extension}")
 
 
 # Maybe the best move would be to replace this with just index?
 
-    df.columns = (
-        df.columns.astype(str)
-        .str.strip()
-        .str.replace("\n", "", regex=False)
-        .str.replace("        ", " ", regex=False)
-    )
+    cleaned_columns = [clean_column_name(column) for column in df.columns]
+    rename_by_normalized_header = {
+        normalize_header(source): target for source, target in RENAME.items()
+    }
+    df.columns = [
+        rename_by_normalized_header.get(normalize_header(column), column)
+        for column in cleaned_columns
+    ]
     df = df.replace(" ", pd.NA).dropna(axis=0, how="all")
 
     if footer_rows:
@@ -89,7 +116,10 @@ def load_and_clean(file_bytes, header_row, footer_rows, extra_cols):
 
     missing = [c for c in ID_COLS if c not in df.columns]
     if missing:
-        raise ValueError(f"Expected columns not found: {missing}. Check the file layout settings.")
+        raise ValueError(
+            f"Expected columns not found: {missing}. Detected columns: "
+            f"{list(df.columns)}. Check the header row setting."
+        )
 
     # Fill merged-cell gaps only in the label columns.
     # (Forward-filling the numbers would copy values into cells that were '-'.)
@@ -229,7 +259,9 @@ def build_figure(kind, long, groups, top_n, as_share, log_scale, title):
 # ------------------------------------------------------------------ UI
 st.title("Sredi mi podatke!")
 
-uploaded = st.file_uploader("Upload the Excel file", type=["xlsx"])
+uploaded = st.file_uploader(
+    "Upload the data file", type=["xls", "xlsx", "xlsm", "xlsb", "ods", "csv"]
+)
 
 with st.sidebar:
     with st.expander("File layout (advanced)"):
@@ -243,7 +275,7 @@ if not uploaded:
 
 try:
     data, value_cols = load_and_clean(
-        uploaded.getvalue(), int(header_row), int(footer_rows), int(extra_cols)
+        uploaded.getvalue(), uploaded.name, int(header_row), int(footer_rows), int(extra_cols)
     )
 except Exception as e:
     st.error(f"Could not read the file: {e}")
