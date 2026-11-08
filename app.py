@@ -5,9 +5,30 @@ import pandas as pd
 import seaborn as sns
 import streamlit as st
 
+import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
+
 st.set_page_config(page_title="Sredi mi podatke!!!", layout="wide")
 
+
+# Kako srediti Crnogorce...
+
+# 1. Get the original 20 colors as RGB tuples
+tab20_colors = list(plt.cm.tab20.colors)
+
+# 2. Define your 21st color (Hex or RGB tuple)
+new_color = '#B59C7B' 
+
+# 3. Append it to the list
+tab20_colors.append(new_color)
+
+# 4. Create the new colormap
+custom_tab21 = ListedColormap(tab20_colors)
+
 ID_COLS = ["Регион", "Пол"]
+LEVELS = ["Serbia", "Macroregion", "Oblast", "Region", "Municipality"]
+HIERARCHY_COLS = ["Serbia", "Macroregion", "Oblast", "Region", "Municipality"]
+EXCLUDED_GROUPS = {"Остали", "Регионална припадност", "Нису се изјаснили", "Непознато"}
 
 # Raw (cleaned) header -> short Serbian header
 RENAME = {
@@ -74,11 +95,70 @@ def load_and_clean(file_bytes, header_row, footer_rows, extra_cols):
     # (Forward-filling the numbers would copy values into cells that were '-'.)
     df[ID_COLS] = df[ID_COLS].ffill()
 
-    # To include if we want to filter out specific regions (possibly make it a standalone filter?)
+    region_names = df["Регион"].astype(str)
+    normalized_region_names = (
+        region_names.str.casefold()
+        .str.replace(r"[–—−]", "-", regex=True)
+        .str.replace(r"\s+", " ", regex=True)
+        .str.strip()
+    )
+    excluded = region_names.str.contains(
+        r"gradska|ostala|градска|остала", case=False, regex=True, na=False
+    )
+    excluded |= normalized_region_names.isin({
+        "србија - север", "србија - југ", "srbija - sever", "srbija - jug"
+    })
+    df = df.loc[~excluded].copy()
 
-    #df = df[~df['Регион'].isin(regions)]
+    def classify_region(name):
+        normalized = (
+            str(name).strip().casefold().replace("–", "-").replace("—", "-")
+        )
+        normalized = " ".join(normalized.split())
+        if normalized in {
+            "србија", "република србија", "serbia", "republic of serbia"
+        }:
+            return "Serbia"
+        if "србија -" in normalized or "serbia -" in normalized:
+            return "Macroregion"
+        if "област" in normalized or "oblast" in normalized:
+            return "Oblast"
+        if "регион" in normalized or "region" in normalized:
+            return "Region"
+        return "Municipality"
+
+    df["Geographic level"] = df["Регион"].map(classify_region)
+
+    hierarchy = {column: pd.NA for column in HIERARCHY_COLS}
+    aligned_rows = []
+    for name, level in zip(df["Регион"], df["Geographic level"]):
+        if level == "Serbia":
+            hierarchy = {column: pd.NA for column in HIERARCHY_COLS}
+            hierarchy["Serbia"] = name
+        elif level == "Macroregion":
+            hierarchy["Macroregion"] = name
+            hierarchy["Oblast"] = pd.NA
+            hierarchy["Region"] = pd.NA
+            hierarchy["Municipality"] = pd.NA
+        elif level == "Oblast":
+            hierarchy["Oblast"] = name
+            hierarchy["Region"] = pd.NA
+            hierarchy["Municipality"] = pd.NA
+        elif level == "Region":
+            hierarchy["Region"] = name
+            hierarchy["Municipality"] = pd.NA
+        else:
+            hierarchy["Municipality"] = name
+        aligned_rows.append(hierarchy.copy())
+    aligned = pd.DataFrame(aligned_rows, index=df.index)
+    df[HIERARCHY_COLS] = aligned[HIERARCHY_COLS]
+    df = df.drop(columns=[column for column in EXCLUDED_GROUPS if column in df.columns])
 
     value_cols = [c for c in df.columns if c not in ID_COLS]
+    value_cols = [
+        c for c in value_cols
+        if c not in HIERARCHY_COLS + ["Geographic level"] + list(EXCLUDED_GROUPS)
+    ]
     df[value_cols] = df[value_cols].apply(pd.to_numeric, errors="coerce")
     return df.reset_index(drop=True), value_cols
 
@@ -111,8 +191,8 @@ def build_figure(kind, long, groups, top_n, as_share, log_scale, title):
                     order=groups, estimator="sum", errorbar=None, ax=ax)
         if log_scale:
             ax.set_yscale("log")
-
-        ax.ticklabel_format(useOffset=False, style="plain", axis="y")
+        else:
+            ax.ticklabel_format(useOffset=False, style="plain", axis="y")
 
     elif kind == "Boxplot (spread across regions)":
         fig, ax = plt.subplots(figsize=(max(8, 0.9 * n), 5))
@@ -124,9 +204,12 @@ def build_figure(kind, long, groups, top_n, as_share, log_scale, title):
         pv = region_pivot(long, groups, top_n, as_share)
         fig, ax = plt.subplots(figsize=(max(8, 0.6 * len(pv)), 6))
         pv.plot(kind="bar", stacked=True, ax=ax,
-                color=sns.color_palette("tab20", n_colors=len(pv.columns)))
+            color=sns.color_palette(custom_tab21.colors, n_colors=len(pv.columns)))
         ax.legend(bbox_to_anchor=(1.02, 1), loc="upper left")
         ax.set_ylabel("%" if as_share else "Број становника")
+
+        ax.ticklabel_format(useOffset=False, style="plain", axis="y")
+
 
     else:  # Heatmap
         pv = region_pivot(long, groups, top_n, as_share)
@@ -169,6 +252,7 @@ except Exception as e:
 with st.sidebar:
     st.header("Filters")
     regions = st.multiselect("Region (empty = all)", list(data["Регион"].dropna().unique()))
+    levels = st.multiselect("Geographic levels (empty = all)", LEVELS)
     genders = st.multiselect("Gender (empty = all)", list(data["Пол"].dropna().unique()))
     default_groups = [c for c in value_cols if c != "Укупно"][:6]
     groups = st.multiselect("Columns / groups", value_cols, default=default_groups)
@@ -176,6 +260,8 @@ with st.sidebar:
 view = data
 if regions:
     view = view[view["Регион"].isin(regions)]
+if levels:
+    view = view[view["Geographic level"].isin(levels)]
 if genders:
     view = view[view["Пол"].isin(genders)]
 
@@ -186,7 +272,7 @@ if view.empty:
     st.warning("No rows match these filters.")
     st.stop()
 
-wide = view[ID_COLS + groups]
+wide = view[ID_COLS + ["Geographic level"] + HIERARCHY_COLS + groups]
 
 tab_table, tab_chart = st.tabs(["Table", "Chart"])
 
@@ -207,7 +293,8 @@ with tab_chart:
         "Select regions of the same level, or totals will be double counted."
     )
 
-    long = wide.melt(id_vars=ID_COLS, var_name="Група", value_name="Број становника").dropna(subset=["Број становника"])
+    long = wide.melt(id_vars=ID_COLS + ["Geographic level"] + HIERARCHY_COLS,
+                     var_name="Група", value_name="Број становника").dropna(subset=["Број становника"])
 
     c1, c2, c3 = st.columns(3)
     kind = c1.selectbox("Chart type", [
