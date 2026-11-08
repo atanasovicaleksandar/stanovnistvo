@@ -105,7 +105,9 @@ def load_and_clean(file_bytes, file_name, header_row, footer_rows, extra_cols):
         rename_by_normalized_header.get(normalize_header(column), column)
         for column in cleaned_columns
     ]
-    df = df.replace(" ", pd.NA).dropna(axis=0, how="all")
+    text_columns = df.select_dtypes(include=["object", "string"]).columns
+    df[text_columns] = df[text_columns].apply(lambda column: column.str.strip())
+    df = df.replace(r"^\s*$", pd.NA, regex=True).dropna(axis=0, how="all")
 
     if footer_rows:
         df = df.iloc[:-footer_rows, :]
