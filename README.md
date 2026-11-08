@@ -22,6 +22,21 @@ Posto samo cita xlsx, kako bi citao i xls i csv (ne koristi se trenutno ali ne b
 Nazivi kolona (headeri) su hardcodovani zapravo, sto pravi problem ako se u drugoj nekoj tabeli promeni redosled ili bilo sta.
 Headeri sami po sebi moraju bolje da se osmisle jer po ovoj postavci rade samo na ovom fajlu.
 
+Sami filteri, pogotovo po regionima su clunky i ne postoji zapravo presek sto se tice hijerarhije na nacin na koji bi trebao.
+Jer recimo, nije kategorizacija
+
+Ovako bi trebalo da izgleda gde bi pod region uzimali zbir svih naselja (opstina ja mislim) u tom regionu.
+Trenutno ta hijerarhijska kategorizacija ne postoji jer ti odnosi kao takvi ne postoje.
+Moze da se koristi indentacija kroz openpyxl driver, ali ako se to koristi onda ne mogu da se otvaraju drugi formati.
+Sto opet, potencijalno moze da se resi tako sto bi se u zavisnosti od tipa fajla koji se ubaci koristio drugi driver.
+Sto onda stvara problem jer ovaj pristup sa indentacijom nece raditi u ranijim popisnim statistikama.
+Tako da...
+
+| Region | Naselje | Srbi |
+| -------- | -------- | -------- |
+| Region A   | Naselje A   | 5924   |
+| Region A   | Naselje B   | 8658   |
+
 #### Dalji koraci
 Srediti kod tako da moze da cita bilo koji RZS file i da izbaci odgovarajuce filtere.
 Ovo je malo nezgodno da se odradi, zahteva da se izdefinise dosta elemenata.
