@@ -103,6 +103,7 @@ def load_pdf_and_clean(file_bytes, start_page):
     return clean_dataframe(parse_ethnicity_pdf(file_bytes, start_page))
 
 
+def clean_dataframe(df, footer_rows=0, extra_cols=0):
     cleaned_columns = [clean_column_name(column) for column in df.columns]
     rename_by_normalized_header = {
         normalize_header(source): target for source, target in RENAME.items()
@@ -293,9 +294,12 @@ else:
             extra_cols = st.number_input("Trailing columns to drop", min_value=0, value=3)
 
 try:
-    data, value_cols = load_and_clean(
-        uploaded.getvalue(), uploaded.name, int(header_row), int(footer_rows), int(extra_cols)
-    )
+    if is_pdf:
+        data, value_cols = load_pdf_and_clean(uploaded.getvalue(), int(start_page))
+    else:
+        data, value_cols = load_and_clean(
+            uploaded.getvalue(), uploaded.name, int(header_row), int(footer_rows), int(extra_cols)
+        )
 except Exception as e:
     st.error(f"Could not read the file: {e}")
     st.stop()
