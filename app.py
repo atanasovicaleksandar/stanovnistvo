@@ -7,8 +7,9 @@ import pandas as pd
 import seaborn as sns
 import streamlit as st
 
-import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
+
+from pdf_parser import parse_ethnicity_pdf
 
 st.set_page_config(page_title="Sredi mi podatke!!!", layout="wide")
 
@@ -27,7 +28,7 @@ tab20_colors.append(new_color)
 # 4. Create the new colormap
 custom_tab21 = ListedColormap(tab20_colors)
 
-ID_COLS = ["Регион", "Пол"]
+ID_COLS = ["Регион"]
 LEVELS = ["Serbia", "Macroregion", "Oblast", "Region", "Municipality"]
 HIERARCHY_COLS = ["Serbia", "Macroregion", "Oblast", "Region", "Municipality"]
 EXCLUDED_GROUPS = {"Остали", "Регионална припадност", "Нису се изјаснили", "Непознато"}
@@ -94,8 +95,13 @@ def load_and_clean(file_bytes, file_name, header_row, footer_rows, extra_cols):
     else:
         raise ValueError(f"Unsupported file type: .{extension}")
 
+    return clean_dataframe(df, footer_rows, extra_cols)
 
-# Maybe the best move would be to replace this with just index?
+
+@st.cache_data(show_spinner="Reading PDF table...")
+def load_pdf_and_clean(file_bytes, start_page):
+    return clean_dataframe(parse_ethnicity_pdf(file_bytes, start_page))
+
 
     cleaned_columns = [clean_column_name(column) for column in df.columns]
     rename_by_normalized_header = {
@@ -123,7 +129,8 @@ def load_and_clean(file_bytes, file_name, header_row, footer_rows, extra_cols):
 
     # Fill merged-cell gaps only in the label columns.
     # (Forward-filling the numbers would copy values into cells that were '-'.)
-    df[ID_COLS] = df[ID_COLS].ffill()
+    identity_cols = ID_COLS + (["Пол"] if "Пол" in df.columns else [])
+    df[identity_cols] = df[identity_cols].ffill()
 
     region_names = df["Регион"].astype(str)
     normalized_region_names = (
@@ -149,6 +156,10 @@ def load_and_clean(file_bytes, file_name, header_row, footer_rows, extra_cols):
             "србија", "република србија", "serbia", "republic of serbia"
         }:
             return "Serbia"
+        if normalized in {"централна србија", "војводина"}:
+            return "Macroregion"
+        if normalized == "град београд":
+            return "Region"
         if "србија -" in normalized or "serbia -" in normalized:
             return "Macroregion"
         if "област" in normalized or "oblast" in normalized:
@@ -175,6 +186,9 @@ def load_and_clean(file_bytes, file_name, header_row, footer_rows, extra_cols):
             hierarchy["Region"] = pd.NA
             hierarchy["Municipality"] = pd.NA
         elif level == "Region":
+            if str(name).strip().casefold() == "град београд":
+                hierarchy["Macroregion"] = pd.NA
+                hierarchy["Oblast"] = pd.NA
             hierarchy["Region"] = name
             hierarchy["Municipality"] = pd.NA
         else:
@@ -184,7 +198,8 @@ def load_and_clean(file_bytes, file_name, header_row, footer_rows, extra_cols):
     df[HIERARCHY_COLS] = aligned[HIERARCHY_COLS]
     df = df.drop(columns=[column for column in EXCLUDED_GROUPS if column in df.columns])
 
-    value_cols = [c for c in df.columns if c not in ID_COLS]
+    identity_cols = ID_COLS + (["Пол"] if "Пол" in df.columns else [])
+    value_cols = [c for c in df.columns if c not in identity_cols]
     value_cols = [
         c for c in value_cols
         if c not in HIERARCHY_COLS + ["Geographic level"] + list(EXCLUDED_GROUPS)
@@ -212,12 +227,13 @@ def region_pivot(long, groups, top_n, as_share):
 def build_figure(kind, long, groups, top_n, as_share, log_scale, title):
     sns.set_theme(style="whitegrid")
     n = max(len(groups), 1)
+    hue = "Пол" if "Пол" in long.columns else None
 
-# Add a hue by gender
+# Add a gender hue when the input includes a gender column.
 
     if kind == "Grouped bar (by group)":
         fig, ax = plt.subplots(figsize=(max(8, 0.9 * n), 5))
-        sns.barplot(data=long, x="Група", y="Број становника", hue="Пол",
+        sns.barplot(data=long, x="Група", y="Број становника", hue=hue,
                     order=groups, estimator="sum", errorbar=None, ax=ax)
         if log_scale:
             ax.set_yscale("log")
@@ -226,7 +242,7 @@ def build_figure(kind, long, groups, top_n, as_share, log_scale, title):
 
     elif kind == "Boxplot (spread across regions)":
         fig, ax = plt.subplots(figsize=(max(8, 0.9 * n), 5))
-        sns.boxplot(data=long, x="Група", y="Број становника", hue="Пол", order=groups, ax=ax)
+        sns.boxplot(data=long, x="Група", y="Број становника", hue=hue, order=groups, ax=ax)
         if log_scale:
             ax.set_yscale("log")
 
@@ -259,19 +275,22 @@ def build_figure(kind, long, groups, top_n, as_share, log_scale, title):
 # ------------------------------------------------------------------ UI
 st.title("Sredi mi podatke!")
 
-uploaded = st.file_uploader(
-    "Upload the data file", type=["xls", "xlsx", "xlsm", "xlsb", "ods", "csv"]
-)
-
-with st.sidebar:
-    with st.expander("File layout (advanced)"):
-        header_row = st.number_input("Header row (0-based)", min_value=0, value=1)
-        footer_rows = st.number_input("Footer rows to drop", min_value=0, value=4)
-        extra_cols = st.number_input("Trailing columns to drop", min_value=0, value=3)
+uploaded = st.file_uploader("Upload an Excel or PDF file", type=["xlsx", "pdf"])
 
 if not uploaded:
-    st.info("Upload the file to get started.")
+    st.info("Upload an Excel or PDF file to get started.")
     st.stop()
+
+is_pdf = uploaded.name.lower().endswith(".pdf")
+if is_pdf:
+    with st.sidebar:
+        start_page = st.number_input("PDF table starts at page", min_value=1, value=14)
+else:
+    with st.sidebar:
+        with st.expander("File layout (advanced)"):
+            header_row = st.number_input("Header row (0-based)", min_value=0, value=1)
+            footer_rows = st.number_input("Footer rows to drop", min_value=0, value=4)
+            extra_cols = st.number_input("Trailing columns to drop", min_value=0, value=3)
 
 try:
     data, value_cols = load_and_clean(
@@ -285,7 +304,10 @@ with st.sidebar:
     st.header("Filters")
     regions = st.multiselect("Region (empty = all)", list(data["Регион"].dropna().unique()))
     levels = st.multiselect("Geographic levels (empty = all)", LEVELS)
-    genders = st.multiselect("Gender (empty = all)", list(data["Пол"].dropna().unique()))
+    if "Пол" in data.columns:
+        genders = st.multiselect("Gender (empty = all)", list(data["Пол"].dropna().unique()))
+    else:
+        genders = []
     default_groups = [c for c in value_cols if c != "Укупно"][:6]
     groups = st.multiselect("Columns / groups", value_cols, default=default_groups)
 
@@ -304,7 +326,8 @@ if view.empty:
     st.warning("No rows match these filters.")
     st.stop()
 
-wide = view[ID_COLS + ["Geographic level"] + HIERARCHY_COLS + groups]
+identity_cols = ID_COLS + (["Пол"] if "Пол" in view.columns else [])
+wide = view[identity_cols + ["Geographic level"] + HIERARCHY_COLS + groups]
 
 tab_table, tab_chart = st.tabs(["Table", "Chart"])
 
@@ -325,7 +348,7 @@ with tab_chart:
         "Select regions of the same level, or totals will be double counted."
     )
 
-    long = wide.melt(id_vars=ID_COLS + ["Geographic level"] + HIERARCHY_COLS,
+    long = wide.melt(id_vars=identity_cols + ["Geographic level"] + HIERARCHY_COLS,
                      var_name="Група", value_name="Број становника").dropna(subset=["Број становника"])
 
     c1, c2, c3 = st.columns(3)
